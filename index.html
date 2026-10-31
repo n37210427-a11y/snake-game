@@ -1,0 +1,264 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>지렁이 게임 · 방해 이벤트 114종</title>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#efe3d0;--fg:#3a2418;--chip:#d9c3a3;--acc:#4f7a14;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c120d;--fg:#f1dfc6;--chip:#3a2518;--acc:#a8d04a}}
+:root[data-theme="dark"]{--bg:#1c120d;--fg:#f1dfc6;--chip:#3a2518;--acc:#a8d04a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 Jua,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px}
+h1{margin:0;font-size:28px}
+#hud{display:flex;gap:18px;font-size:18px}
+#box{position:relative;width:min(100%,504px);aspect-ratio:1;overflow:hidden;border-radius:14px;background:#2a1b14;touch-action:none}
+canvas{width:100%;height:100%;display:block}
+#ov{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#1c120dd9;color:#f1dfc6;text-align:center;padding:16px}
+#ov[hidden]{display:none}
+#ovt{font-size:22px}
+button{font:inherit;font-size:20px;padding:8px 24px;border:0;border-radius:10px;background:#a8d04a;color:#2a1b14;cursor:pointer}
+button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+#ad{position:absolute;left:12%;right:12%;top:30%;z-index:2;background:#fff;color:#222;border-radius:8px;padding:16px 14px;text-align:center;box-shadow:0 6px 24px #0008}
+#ad b{color:#d33}
+#ad i{position:absolute;right:6px;top:1px;font-style:normal;cursor:pointer;font-size:11px;color:#999}
+#fl{position:absolute;inset:0;z-index:1;pointer-events:none;opacity:0}
+#ev{font-size:22px;min-height:30px;color:var(--acc)}
+#act{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:504px;min-height:28px}
+.c{background:var(--chip);border-radius:99px;padding:2px 10px;font-size:14px}
+</style></head><body>
+<h1>지렁이 게임</h1>
+<div id="hud"><span>점수 <b id="sc">0</b></span><span>최고 <b id="bs">0</b></span><span>길이 <b id="ln">3</b></span></div>
+<div id="ev"></div>
+<div id="box"><canvas id="cv"></canvas>
+<div id="fl"></div>
+<div id="ad" hidden><i>닫기 ✕</i><b>축하합니다!</b><br>지렁이 1억 마리 당첨<br>지금 바로 확인하세요</div>
+<div id="ov"><div id="ovt">흙 속을 달리는 지렁이<br>5~8초마다 방해 이벤트가 터져요<br>공룡·플래피 버드 습격도 있어요<br>(총 <span id="n"></span>종)</div><button id="go">시작</button><small>방향키 / WASD / 스와이프 · 미니게임은 스페이스/탭<br>⚠ 번쩍이는 화면 효과 주의</small></div></div>
+<div id="act"></div>
+<script>
+const N=21,C=24,cv=document.getElementById('cv'),x=cv.getContext('2d'),$=i=>document.getElementById(i);
+cv.width=cv.height=N*C;
+let M={},act=[],w=[],d={x:1,y:0},nd=d,foods=[],rocks=[],score=0,grow=0,tick=0,state='idle',last=0,nextEv=0,acc=0,lastTurn=0,lastE,best=0;
+try{best=+localStorage.getItem('wb')||0}catch(e){}
+const R=n=>Math.random()*n|0;
+const occ=(a,b)=>w.some(s=>s.x==a&&s.y==b)||rocks.some(s=>s.x==a&&s.y==b)||foods.some(s=>s.x==a&&s.y==b);
+const fr=far=>{for(let i=0;i<300;i++){const a=R(N),b=R(N);if(!occ(a,b)&&(!far||Math.abs(a-w[0].x)+Math.abs(b-w[0].y)>far))return{x:a,y:b}}};
+const food=(n,k=0)=>{while(n--){const p=fr();if(p)foods.push({...p,k})}};
+const rock=n=>{while(n--){const p=fr(4);if(p)rocks.push(p)}};
+const put=(a,b)=>{if(a>=0&&b>=0&&a<N&&b<N&&!occ(a,b)&&Math.abs(a-w[0].x)+Math.abs(b-w[0].y)>2)rocks.push({x:a,y:b})};
+const cut=n=>{w.length=Math.max(3,w.length-n)};
+const E=[
+['번개 지렁이',{s:.5}],['슬로모션',{s:2}],['초고속',{s:.35}],['느림보',{s:2.6}],['널뛰기 속도',{jit:1}],['살짝 빨라짐',{s:.8}],
+['좌우 키 반전',{fx:1}],['상하 키 반전',{fy:1}],['방향키 전부 반대',{rev:1}],['방향키 90° 회전',{cw:1}],['가로세로 뒤바뀜',{sw:1}],['술 취한 지렁이',{dr:.12}],['만취',{dr:.3}],['방향 고정',{lock:1},5000],['입력 지연',{lag:1}],['키 씹힘',{drop:.5}],['꺾기 쿨타임',{cd:1}],
+['화면 뒤집힘',{t:'rotate(180deg)'}],['화면 90° 회전',{t:'rotate(90deg)'}],['화면 좌우 거울',{t:'scaleX(-1)'}],['화면 상하 거울',{t:'scaleY(-1)'}],['화면 확대',{t:'scale(1.7)'}],['화면 축소',{t:'scale(.55)'}],['블러',{f:'blur(3px)'}],['심한 블러',{f:'blur(7px)'}],['색 반전',{f:'invert(1)'}],['흑백 화면',{f:'grayscale(1)'}],['무지개 색 돌림',{hue:1}],['대비 폭발',{f:'contrast(4)'}],['어둠',{f:'brightness(.25)'}],['눈부심',{f:'brightness(3)'}],['세피아',{f:'sepia(1) saturate(4)'}],['원근 기울기',{t:'perspective(450px) rotateX(50deg)'}],['지진',{shake:1}],['빙글빙글',{spin:1}],['두근두근 화면',{pulse:1}],['유령 화면',{f:'opacity(.3)'}],['화면 얼음',{frz:1}],['가짜 광고창',{ad:1},12000],
+['안개',{fog:6}],['짙은 안개',{fog:4}],['손전등',{fog:2.5}],['먹이 투명',{hf:1}],['몸통 투명',{hb:1}],['머리까지 투명',{hb:1,hh:1}],['돌 위장',{hr:1}],['먹이 깜빡깜빡',{bl:1}],
+['벽 통과',{wrap:1}],['유령 몸통',{gh:1}],['방패 1회',{sh:1},20000],['점수 2배',{ml:2}],['점수 반토막',{ml:.5}],['점수 줄줄 샘',{dn:1}],['먹으면 감점',{pen:1}],['먹어도 안 자람',{ng:1}],['먹으면 두 배 성장',{g2:1}],['꼬리 무한 성장',{gro:1},5000],['꼬리 쭈글쭈글',{shr:1},6000],['몸통 알록달록',{rc:1}],['2초 정지',{pause:1},2000],
+['먹이 방황',{fm:1}],['먹이 도망',{fm:2}],['먹이 추격',{fm:3}],
+['먹이 10개 폭탄',()=>food(10)],['독버섯 5개',()=>food(5,1)],['황금 먹이 등장',()=>food(1,2)],['가짜 먹이 5개',()=>food(5,3)],['돌 5개',()=>rock(5)],['돌 15개',()=>rock(15)],['돌비 30개',()=>rock(30)],['돌 치우기',()=>rocks=[]],
+['머리 순간이동',()=>{const p=fr();if(p){w.unshift(p);w.pop()}}],
+['머리↔꼬리 교체',()=>{w.reverse();const a=w[0],b=w[1];d={x:a.x-b.x,y:a.y-b.y};if(Math.abs(d.x)+Math.abs(d.y)!=1)d={x:1,y:0};nd=d}],
+['꼬리 3칸 절단',()=>cut(3)],['꼬리 절반 절단',()=>cut(w.length/2|0)],['몸 5칸 성장',()=>grow+=5],['몸 10칸 성장',()=>grow+=10],['점수 -50',()=>score=Math.max(0,score-50)],['점수 +30',()=>score+=30],
+['방향 랜덤 전환',()=>{const o=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].filter(v=>!(v.x==-d.x&&v.y==-d.y));nd=o[R(o.length)]}],
+['먹이 재배치',()=>{foods=[];food(1)}],
+['가로 돌벽',()=>{const y=R(N),g=R(N);for(let i=0;i<N;i++)if(Math.abs(i-g)>1)put(i,y)}],
+['세로 돌벽',()=>{const a=R(N),g=R(N);for(let i=0;i<N;i++)if(Math.abs(i-g)>1)put(a,i)}],
+['돌 네모',()=>{const a=2+R(N-5),b=2+R(N-5);for(let i=0;i<3;i++)for(let j=0;j<3;j++)put(a+i,b+j)}],
+['눈앞에 돌',()=>{for(let i=3;i<6;i++)put(w[0].x+d.x*i,w[0].y+d.y*i)}],
+['테두리 돌 한 겹',()=>{for(let i=0;i<N;i++){put(i,0);put(i,N-1);put(0,i);put(N-1,i)}}],
+['3칸 점프',()=>{for(let i=0;i<3;i++){const a=w[0].x+d.x,b=w[0].y+d.y;if(a<0||b<0||a>=N||b>=N||occ(a,b))break;w.unshift({x:a,y:b});w.pop()}}],
+['먹이 반대편으로',()=>foods.forEach(f=>{const a=N-1-f.x,b=N-1-f.y;if(!occ(a,b)){f.x=a;f.y=b}})],
+['먹이 20개',()=>food(20)],['독버섯 12개',()=>food(12,1)]
+];
+[30,60,120,150,270,300].forEach(a=>E.push([`화면 ${a}° 회전`,{t:`rotate(${a}deg)`}]));
+[90,150,210,270].forEach(a=>E.push([`색상 ${a}° 돌림`,{f:`hue-rotate(${a}deg)`}]));
+[['하얀 번쩍',1],['빨간 경고등',2],['색 반전 번쩍',3],['암전 깜빡',4],['무지개 스트로브',5],['번개 번쩍',6],['밝기 맥박',7],['색상 점멸',8],['하얀 숨쉬기',9],['디스코 조명',10]].forEach(([n,k])=>E.push([n,{fl:k}]));
+E.push(['공룡 게임 습격!',()=>mini('dino')],['광속 공룡',()=>mini('dino2')],['플래피 버드 습격!',()=>mini('bird')],['좁은 파이프 플래피',()=>mini('bird2')]);
+$('n').textContent=E.length;
+
+const chips=()=>$('act').innerHTML=act.map(e=>`<span class="c">${e.n}</span>`).join('');
+const hud=()=>{$('sc').textContent=score|0;$('bs').textContent=best;$('ln').textContent=w.length};
+function fire(now){
+ let e;do{e=Math.random()<.2?E[E.length-1-R(4)]:E[R(E.length)]}while(e===lastE);lastE=e;
+ const [n,p,t=9000]=e;
+ if(typeof p=='function')p();else{Object.assign(M,p);act.push({n,k:Object.keys(p),end:now+t});chips()}
+ $('ev').textContent='⚡ '+n;
+}
+function turn(dx,dy){
+ if(M.drop&&Math.random()<.5)return;
+ if(M.rev)[dx,dy]=[-dx,-dy];
+ if(M.fx)dx=-dx;
+ if(M.fy)dy=-dy;
+ if(M.sw)[dx,dy]=[dy,dx];
+ if(M.cw)[dx,dy]=[-dy,dx];
+ if(M.lock)return;
+ if(M.cd&&tick-lastTurn<4)return;
+ if(dx==-d.x&&dy==-d.y)return;
+ if(dx!=d.x||dy!=d.y)lastTurn=tick;
+ nd={x:dx,y:dy};
+}
+const inp=(dx,dy)=>M.lag?setTimeout(()=>turn(dx,dy),450):turn(dx,dy);
+const bad=(a,b,g)=>a<0||b<0||a>=N||b>=N||rocks.some(r=>r.x==a&&r.y==b)||(!M.gh&&w.slice(0,g?w.length:-1).some(s=>s.x==a&&s.y==b));
+function over(){
+ state='over';best=Math.max(best,score|0);
+ try{localStorage.setItem('wb',best)}catch(e){}
+ M={};act=[];chips();hud();
+ $('ovt').innerHTML=`게임 오버<br>점수 ${score|0} · 길이 ${w.length}`;$('go').textContent='다시 하기';$('ov').hidden=false;
+}
+function step(){
+ tick++;
+ if(M.dr&&Math.random()<M.dr){const p=d.x?[{x:0,y:1},{x:0,y:-1}]:[{x:1,y:0},{x:-1,y:0}];nd=p[R(2)]}
+ d=nd;
+ let a=w[0].x+d.x,b=w[0].y+d.y;
+ if(M.wrap){a=(a+N)%N;b=(b+N)%N}
+ if(bad(a,b,grow)){
+  if(M.sh){delete M.sh;act=act.filter(e=>!e.k.includes('sh'));chips();
+   for(const v of [{x:d.y,y:d.x},{x:-d.y,y:-d.x}])if(!bad(w[0].x+v.x,w[0].y+v.y,grow)){d=nd=v;break}
+   return}
+  return over();
+ }
+ w.unshift({x:a,y:b});
+ const fi=foods.findIndex(f=>f.x==a&&f.y==b);
+ let g=0;
+ if(fi>=0){
+  const f=foods.splice(fi,1)[0],m=M.ml||1;
+  if(f.k==1){cut(3);score=Math.max(0,score-10)}
+  else if(f.k==3)score=Math.max(0,score-5);
+  else{score=Math.max(0,score+(M.pen?-5:(f.k?50:10)*m));if(!M.ng)g=f.k?3:(M.g2?2:1)}
+  if(!foods.some(f=>!f.k))food(1);
+ }
+ grow+=g;
+ if(grow>0)grow--;else w.pop();
+ if(M.gro)grow++;
+ if(M.shr&&tick%3==0&&w.length>3)w.pop();
+ if(M.dn)score=Math.max(0,score-.3);
+ if(M.fm&&tick%3==0)foods.forEach(f=>{
+  const h=w[0];let v;
+  if(M.fm==1)v=[[1,0],[-1,0],[0,1],[0,-1]][R(4)];
+  else{const dx=h.x-f.x,dy=h.y-f.y,s=M.fm==2?-1:1;v=Math.abs(dx)>Math.abs(dy)?[Math.sign(dx)*s,0]:[0,Math.sign(dy)*s]}
+  const p=f.x+v[0],q=f.y+v[1];
+  if(p>=0&&q>=0&&p<N&&q<N&&!occ(p,q)){f.x=p;f.y=q}
+ });
+ hud();
+}
+function css(now){
+ let t=M.t||'';
+ if(M.spin)t+=` rotate(${now/15%360}deg)`;
+ if(M.pulse)t+=` scale(${1+.25*Math.sin(now/200)})`;
+ if(M.shake)t+=` translate(${R(15)-7}px,${R(15)-7}px)`;
+ cv.style.transform=t;
+ let f=M.f||'',o=0,bg='#fff';const k=M.fl,ph=now/170|0;
+ if(k==1)o=ph%2;
+ if(k==2){o=ph%2;bg='#f00'}
+ if(k==3&&ph%2)f+=' invert(1)';
+ if(k==4){o=(now/450|0)%3==0?1:0;bg='#000'}
+ if(k==5){o=ph%2;bg=`hsl(${now/3%360} 100% 55%)`}
+ if(k==6){if(now>fq&&Math.random()<.05){fq=now+450;fo=now+90}o=now<fo?1:0}
+ if(k==7)f+=` brightness(${1+2*Math.abs(Math.sin(now/340))})`;
+ if(k==8)f+=` hue-rotate(${ph*67%360}deg)`;
+ if(k==9)o=Math.abs(Math.sin(now/300))*.9;
+ if(k==10){o=.55*(ph%2);bg=`hsl(${ph*47%360} 100% 50%)`}
+ $('fl').style.opacity=o;$('fl').style.background=bg;
+ cv.style.filter=f+(M.hue?` hue-rotate(${now/6%360}deg)`:'');
+ $('ad').hidden=!M.ad;
+}
+function draw(now){
+ css(now);
+ if(M.frz&&state=='run')return;
+ x.fillStyle='#2a1b14';x.fillRect(0,0,N*C,N*C);
+ x.fillStyle='#32211a';
+ for(let i=0;i<N;i++)for(let j=0;j<N;j++)if((i+j)%2)x.fillRect(i*C,j*C,C,C);
+ if(!M.hr){x.fillStyle='#7a6f66';rocks.forEach(r=>{x.beginPath();x.roundRect(r.x*C+2,r.y*C+2,C-4,C-4,6);x.fill()})}
+ if(!M.hf&&!(M.bl&&(now/300|0)%2))foods.forEach(f=>{x.fillStyle=['#9ccc3b','#8b5fbf','#ffcf3f','#9ccc3b'][f.k];x.beginPath();x.arc(f.x*C+C/2,f.y*C+C/2,C/2-4,0,7);x.fill()});
+ for(let i=w.length;i--;){
+  if(i&&M.hb||!i&&M.hh)continue;
+  const s=w[i],cx=s.x*C+C/2,cy=s.y*C+C/2,r=i?C/2-2:C/2;
+  x.fillStyle=M.rc?`hsl(${(i*40+now/5)%360} 80% 65%)`:i%2?'#e58f8f':'#d57a82';
+  x.beginPath();x.roundRect(cx-r,cy-r,r*2,r*2,8);x.fill();
+  if(!i){x.fillStyle='#2a1b14';[-1,1].forEach(k=>{x.beginPath();x.arc(cx+d.x*5+d.y*k*5,cy+d.y*5+d.x*k*5,2.5,0,7);x.fill()})}
+ }
+ if(M.fog&&w.length){const h=w[0];x.fillStyle='#0c0705f2';for(let i=0;i<N;i++)for(let j=0;j<N;j++)if(Math.hypot(i-h.x,j-h.y)>M.fog)x.fillRect(i*C,j*C,C,C)}
+}
+let fq=0,fo=0,mi=null;
+const jump=()=>{if(!mi)return;if(mi.k[0]=='b')mi.v=-430;else if(mi.y>=400)mi.v=-760};
+function mini(k){mi={k,t:-1.2,y:k[0]=='b'?240:400,v:0,o:[],nx:0,d:null,gap:k=='bird2'?115:150,sp:k=='dino2'?430:320};state='mini';last=performance.now()}
+function endMini(ok){
+ state='run';last=performance.now();acc=0;nextEv=last+5000;
+ if(ok)score+=50;else{cut(5);score=Math.max(0,score-30)}
+ $('ev').textContent=ok?'🎉 미니게임 클리어! +50':'💥 미니게임 실패! 꼬리 -5, 점수 -30';hud();
+}
+function miniRun(dt){
+ const m=mi,b=m.k[0]=='b';
+ if(m.d!=null){m.d-=dt;if(m.d<=0)endMini(0);return}
+ m.t+=dt;m.v+=(b?1500:2000)*dt;m.y+=m.v*dt;
+ if(!b&&m.y>400){m.y=400;m.v=0}
+ if(b&&m.t<=0){m.y=240;m.v=0}
+ if(m.t>0){
+  m.nx-=dt;
+  if(m.nx<=0){m.nx=b?1.5:.8+Math.random()*.9;m.o.push(b?{x:520,g:130+R(240)}:{x:520,w:22+R(14),h:34+R(26)})}
+  m.o.forEach(o=>o.x-=(b?200:m.sp)*dt);
+  m.o=m.o.filter(o=>o.x>-70);
+  const hit=b?(m.y<12||m.y>468||m.o.some(o=>o.x<144&&o.x+56>120&&(m.y-12<o.g-m.gap/2||m.y+12>o.g+m.gap/2))):m.o.some(o=>o.x<104&&o.x+o.w>72&&m.y>404-o.h);
+  if(hit){m.d=.9;return}
+  if(m.t>12)endMini(1);
+ }
+}
+function miniDraw(){
+ const m=mi,b=m.k[0]=='b';
+ x.fillStyle=b?'#70c5ce':'#f2ede4';x.fillRect(0,0,504,504);
+ if(b){
+  x.fillStyle='#ded895';x.fillRect(0,480,504,24);
+  x.fillStyle='#73bf2e';m.o.forEach(o=>{x.fillRect(o.x,0,56,o.g-m.gap/2);x.fillRect(o.x,o.g+m.gap/2,56,480-o.g-m.gap/2)});
+  x.fillStyle='#f7d51d';x.beginPath();x.arc(132,m.y,13,0,7);x.fill();
+  x.fillStyle='#e8743b';x.fillRect(138,m.y-2,12,6);
+  x.fillStyle='#222';x.beginPath();x.arc(136,m.y-4,2.5,0,7);x.fill();
+ }else{
+  x.fillStyle='#535353';x.fillRect(0,400,504,3);
+  m.o.forEach(o=>x.fillRect(o.x,400-o.h,o.w,o.h));
+  x.fillRect(70,m.y-40,30,40);x.fillRect(86,m.y-52,24,16);x.fillRect(64,m.y-24,8,8);
+  x.fillStyle='#f2ede4';x.fillRect(102,m.y-48,4,4);
+ }
+ x.fillStyle=b?'#fff':'#535353';x.font='26px Jua,sans-serif';x.textAlign='center';
+ x.fillText(m.d!=null?'💥 실패!':m.t<0?(b?'플래피 버드! 스페이스/탭으로 날기':'공룡 달리기! 스페이스/탭으로 점프'):Math.max(0,Math.ceil(12-m.t))+'초 버텨요',252,50);
+ x.textAlign='left';
+}
+function loop(now){
+ requestAnimationFrame(loop);
+ if(state=='mini'){
+  const dt=Math.min(.05,(now-last)/1000);last=now;miniRun(dt);miniDraw();
+  cv.style.transform=cv.style.filter='';$('ad').hidden=1;$('fl').style.opacity=0;return;
+ }
+ if(state=='run'){
+  const dt=now-last;last=now;acc+=dt;
+  const before=act.length;
+  act=act.filter(e=>{if(now>e.end){e.k.forEach(k=>delete M[k]);return false}return true});
+  if(act.length!=before)chips();
+  if(now>nextEv){fire(now);nextEv=now+5000+R(3000)}
+  if(M.pause)acc=0;
+  const iv=Math.max(55,(135-Math.min(45,score/6))*(M.s||1)*(M.jit?.4+Math.random()*1.6:1));
+  if(acc>=iv){acc=0;step()}
+ }
+ draw(now);
+}
+function start(){
+ w=[{x:10,y:10},{x:9,y:10},{x:8,y:10}];d=nd={x:1,y:0};foods=[];rocks=[];score=0;grow=0;tick=0;lastTurn=-9;M={};act=[];acc=0;lastE=null;
+ state='run';last=performance.now();nextEv=last+5000;
+ $('ov').hidden=true;$('ev').textContent='';food(1);chips();hud();
+}
+const K={ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0],ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1]};
+addEventListener('keydown',e=>{
+ if(state=='mini'){if(e.code=='Space'||['ArrowUp','w','W'].includes(e.key)){e.preventDefault();jump()}return}
+ const v=K[e.key.length>1?e.key:e.key.toLowerCase()];
+ if(v){e.preventDefault();if(state=='run')inp(v[0],v[1])}
+ else if(e.code=='Space'&&state!='run'){e.preventDefault();start()}
+});
+let ts;
+$('box').addEventListener('touchstart',e=>{ts=e.touches[0]},{passive:true});
+$('box').addEventListener('touchend',e=>{
+ if(!ts||state!='run')return;
+ const t=e.changedTouches[0],dx=t.clientX-ts.clientX,dy=t.clientY-ts.clientY;
+ if(Math.max(Math.abs(dx),Math.abs(dy))>20)Math.abs(dx)>Math.abs(dy)?inp(Math.sign(dx),0):inp(0,Math.sign(dy));
+});
+$('box').addEventListener('pointerdown',()=>{if(state=='mini')jump()});
+$('ad').onclick=e=>{if(e.target.tagName=='I')delete M.ad};
+$('go').onclick=start;
+hud();requestAnimationFrame(loop);
+</script></body></html>
